@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Waiter</title>
+</head>
+<body>
+	<pre id="content"></pre>
+	<script src="Waiter.js"></script>
+	<script>
+		const endpoint = "https://cat-fact.herokuapp.com/facts";
+
+		fetch(endpoint)
+		.then((response) => response.json())
+		.then((json) => {
+			document.querySelector("#content").textContent = JSON.stringify(json.all[0], undefined, 2);
+		});
+	</script>
+	<script>
+		const w = new Waiter();
+
+		w.waitFor("#test")
+		// .timeoutIn(1000, () => console.log("timeout"))
+		.toExist()
+		.execute(() => console.log("node exists"))
+		.toPopulate()
+		.execute(() => console.log("node has been populated"))
+		.ifValueMatches(/test/gi)
+		// .ifValueMatches(/dsa/gi)
+		.execute((node) => console.log("execute()"))
+		.else((node) => console.log("else()"))
+		.waitFor("button")
+		.click()
+		.wait(1000)
+		.end(() => console.log("You've been served."));
+
+		// const w2 = new Waiter();
+
+		// w2.waitFor("button")
+		// .click()
+		// .end();
+	</script>
+</body>
+</html>
