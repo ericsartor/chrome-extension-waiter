@@ -4,34 +4,51 @@
 */
 
 const Waiter = function() {
+	/*
+	 * CONSTANTS
+	 */	
+
 	const DEBUG = true;
 	const INTERVAL_MILLISECONDS = 100;
 
-	this.selector = null;
-	this.node = null;
-	this.interval = null;
-	this.waitCounter = 0;
-	this.currentWaitNumber = null;
-
-	this.timeouts = {};
 
 
-	this.callIndex = 0;
-	this.callStack = [];
 
-	this.executeIndexes = [];
-	this.elseIndexes = [];
+	/*
+	 * PRIVATE PROPERTIES
+	 */	
 
-	this.completionCallback = null;
+	// these get reset at each call to waitFor()
+	_selector = null; // string query selector used for selecting a node
+	_node = null; // stores reference to node once found
+	_interval = null; // stores reference to interval being used to search for node
 
-	this.ended = false;
+	_waitCounter = 0; // a count of how many waitFor() calls have been made in this Waiter chain
+	_currentWaitNumber = null; // once chain is running, keeps track of which wait is happening currently
+
+	_timeouts = {}; // key is a waitNumber, value is an object { milliseconds: number, handler: Function | null }
+
+	_callStack = []; // an array of functions to be executed in the order they were registered in the chain
+	_callIndex = 0; // stores the index for which function should be run on the next call to _Next()
+
+	_executeIndexes = []; // callIndexes that were registered via execute()
+	_elseIndexes = []; // callIndexes that were registered via else(), referring to the relative execute() index
+
+	_completionCallback = null; // function to be run at the end of the chain
+
+	_ended = false; // flag set in end() ensuring a call to end() was registered, checked via timeout
+
+
+
+
 
 	/*
 	 * CONSTRUCTOR LOGIC
 	 */	
 
+	 // ensures a call to end() was registered
 	 setTimeout(() => {
-	 	if (!this.ended) {
+	 	if (!_ended) {
 	 		throw Error("end() must be called at the end of a Waiter chain.");
 	 	}
 	 })
@@ -44,48 +61,62 @@ const Waiter = function() {
 	 * PRIVATE METHODS
 	 */
 
-	const log = (str) => {
+	// used for development debugging and logging
+	const _Log = (str) => {
 		if (DEBUG) console.log(str);
 	}
 
-	const addToCallStack = (func) => {
-		this.callStack.push(func);
+	// adds a task to the call stack when something is registered in the chain
+	const _AddToCallStack = (func) => {
+		_callStack.push(func);
 	}
 
-	const clearCallStack = () => {
-		this.callStack = [];
-		this.callIndex = 0;
+	// clears the call stack, generally when the end of the chain is reached
+	const _ClearCallStack = () => {
+		_callStack = [];
+		_callIndex = 0;
 	}
 
-	const next = () => {
-		if (this.callIndex === this.callStack.length) {
-			clearCallStack();
-			this.completionCallback();
+	// runs the next task in the call stack, and accounts for skipping methods registered via else() if necessary
+	// clears the call stack if if the end is reached
+	const _Next = () => {
+		if (_callIndex === _callStack.length) {
+			// end of call stack reached
+			_ClearCallStack();
+			_completionCallback();
 			return;
-		} else if (this.callStack.length === 0) {
+		} else if (_callStack.length === 0) {
 			return;
 		} else {
-			const i = this.callIndex;
+			// store current call index so it can be incremented before running the next task in the call stack
+			const i = _callIndex;
 
-			// add 2 if there is an else function after this function
-			this.callIndex += this.elseIndexes.includes(this.callIndex) ? 2 : 1;
-			this.callStack[i]();
+			// add 2 if there is an else function after this function that needs to be skipped
+			_callIndex += _elseIndexes.includes(_callIndex) ? 2 : 1;
+
+			_callStack[i]();
 		}
 	}
 
-	const nextElse = () => {
-		const i = this.callIndex + 1;
-		this.callIndex += 2;
+	// an alternative to _Next(), only used in if() functions
+	const _NextElse = () => {
+		// current index is an execute() task, so we add 1 to get the else() task
+		const i = _callIndex + 1;
 
-		this.callStack[i]();
+		// increment the call index past the else task
+		_callIndex += 2;
+
+		_callStack[i]();
 	}
 
-	const registerTimeout = (milliseconds, handler, waitNumber) => {
-		if (this.timeouts[waitNumber]) {
+	// adds an entry to the _timesouts map
+	const _RegisterTimeout = (milliseconds, handler, waitNumber) => {
+		// ensure timeouts aren't overlapping on the same wait task
+		if (_timeouts[waitNumber]) {
 			throw new Error(`There is already a timeout set for wait number ${waitNumber}`);
 		}
 
-		this.timeouts[waitNumber] = { milliseconds, handler };
+		_timeouts[waitNumber] = { milliseconds, handler };
 	}
 
 
@@ -96,48 +127,50 @@ const Waiter = function() {
 	 * PUBLIC METHODS
 	 */
 
+	// this needs to be called at the end of every chain, as it starts the execution and registers the completion callback
 	this.end = (callback) => {
-		this.completionCallback = callback;
-		this.ended = true;
-		next();
+		_completionCallback = callback;
+		_ended = true;
+		_Next();
 	}
 
+	// arbitrary time delay
 	this.wait = (milliseconds) => {
-		addToCallStack(() => {
-			setTimeout(next, milliseconds);
+		_AddToCallStack(() => {
+			setTimeout(_Next, milliseconds);
 		});
 
 		return this;
 	}
 
-	// starts looking for a node based on a query selector, then runs a verification function on that node
+	// starts looking for a node based on a query selector via interval, then proceeds once found (or timed out if one is registered)
 	this.waitFor = (selector) => {
-		this.selector = selector;
-		this.waitCounter++;
+		_selector = selector;
+		_waitCounter++;
 
-		const waitNumber = this.waitCounter;
+		// closure over this wait task's waitNumber for use with the _timeouts map
+		const waitNumber = _waitCounter;
 
-		addToCallStack(() => {
+		_AddToCallStack(() => {
 			// create a timestamp used for determining if the wait operation has timed out
 			const waitStartTimestamp = performance.now();
-			this.currentWaitNumber = waitNumber;
 
-			this.interval = setInterval(() => {
+			_interval = setInterval(() => {
 				// attempt to find the node based on the supplied query selector
-				const node  = document.querySelector(this.selector);
+				const node  = document.querySelector(_selector);
 
-				// if the node is found, stop looking and run the next function in the chain
+				// if the node is found, stop looking and run the _Next function in the chain
 				if (node !== null) {
-					this.node = node;
-					clearInterval(this.interval);
-					next();
+					_node = node;
+					clearInterval(_interval);
+					_Next();
 					return;
 				}
 
-				// if the waiting timeout gets triggered, run the timeout handler
-				if (this.timeouts[waitNumber] && performance.now() - waitStartTimestamp > this.timeouts[waitNumber].milliseconds) {
-					clearInterval(this.interval);
-					this.timeouts[waitNumber].handler && this.timeouts[waitNumber].handler();
+				// if the waiting times out, run the timeout handler
+				if (_timeouts[waitNumber] && performance.now() - waitStartTimestamp > _timeouts[waitNumber].milliseconds) {
+					clearInterval(_interval);
+					_timeouts[waitNumber].handler && _timeouts[waitNumber].handler();
 					return;
 				}
 			}, INTERVAL_MILLISECONDS);
@@ -146,57 +179,64 @@ const Waiter = function() {
 		return this;
 	}
 
+	// registers a timeout with optional handler for the current wait task
 	this.timeoutIn = (milliseconds, handler) => {
 		if (milliseconds === undefined) {
 			throw new Error("No timeout millisecond value was provided to timeoutIn()");
 		}
 
+		// handlers are not required
 		if (!handler) {
 			console.warn("It is recommended that a callback be provided to timeoutIn()");
 		}
 
-		registerTimeout(milliseconds, handler, this.waitCounter);
+		_RegisterTimeout(milliseconds, handler, _waitCounter);
 
 		return this;
 	}
 
 	// strictly aesthetic function, as waitFor() already confirms node existence by default
 	this.toExist = () => {
-		addToCallStack(next);
+		_AddToCallStack(_Next);
 
 		return this;
 	}
 
 	// trigger the click event handler for the current node
 	this.click = () => {
-		addToCallStack(() => {
-			if (this.node === null) {
-				throw Error(`click() was triggered on a null value after waiting for "${this.selector}"`);
+		_AddToCallStack(() => {
+			if (_node === null) {
+				throw Error(`click() was triggered on a null value after waiting for "${_selector}"`);
 			}
 
-			this.node.click();
+			_node.click();
 		});
 
 		return this;
 	}
 
 	// waits for the current node's textContent to be truthy
-	this.toPopulate = (timeoutMilliseconds) => {
-		addToCallStack(() => {
+	this.toPopulate = () => {
+		_waitCounter++;
+
+		// closure over this wait task's waitNumber for use with the _timeouts map
+		const waitNumber = _waitCounter;
+
+		_AddToCallStack(() => {
 			// create a timestamp used for determining if the wait operation has timed out
 			const waitStartTimestamp = performance.now();
-			timeoutMilliseconds = timeoutMilliseconds || null;
 
-			this.interval = setInterval(() => {
-				if (this.node.textContent) {
-					clearInterval(this.interval);
-					next();
+			_interval = setInterval(() => {
+				if (_node.textContent) {
+					clearInterval(_interval);
+					_Next();
 				}
 
-				// if the waiting timeout gets triggered, run the timeout handler
-				if (timeoutMilliseconds !== null &&  performance.now() - waitStartTimestamp > timeoutMilliseconds) {
-					clearInterval(this.interval);
-					timeoutHandler();
+				// if the waiting times out, run the timeout handler
+				if (_timeouts[waitNumber] && performance.now() - waitStartTimestamp > _timeouts[waitNumber].milliseconds) {
+					clearInterval(_interval);
+					_timeouts[waitNumber].handler && _timeouts[waitNumber].handler();
+					return;
 				}
 			}, INTERVAL_MILLISECONDS);
 		});
@@ -204,49 +244,51 @@ const Waiter = function() {
 		return this;
 	}
 
-	// checks for string regex match on node's textContent
+	// checks for string regex match on node's textContent, calls _NextElse() if match fails
 	this.ifValueMatches = (regex) => {
-		addToCallStack(() => {
-			if (!this.node) {
-				throw Error(`Node does not exist yet based on selector "${this.selector}".`)
+		_AddToCallStack(() => {
+			if (!_node) {
+				throw Error(`Node does not exist yet based on selector "${_selector}".`)
 			}
 
-			if (this.node.textContent.match(regex)) {
-				next();
+			if (_node.textContent.match(regex)) {
+				_Next();
 			} else {
-				nextElse();
+				_NextElse();
 			}
 		});
 
 		return this;
 	}
 
-	// run a callback at any point in the chain
+	// run a callback at any point in the chain, which is supplied with the current node as an argument
 	this.execute = (callback) => {
-		addToCallStack(() => {
-			callback(this.node);
-			next();
+		_AddToCallStack(() => {
+			callback(_node);
+			_Next();
 		});
 
-		this.executeIndexes.push(this.callStack.length - 1);
+		_executeIndexes.push(_callStack.length - 1);
 
 		return this;
 	}
 
 	// used to execute an alternative callback instead of an execute() callback, if preceeded by an if method that doesn't pass
 	this.else = (callback) => {
-		if (this.executeIndexes.length === 0) {
+		if (_executeIndexes.length === 0) {
 			throw Error("Cannot use else() before using execute().")
-		} else if (this.executeIndexes[this.executeIndexes.length - 1] !== this.callStack.length - 1) {
+		} else if (_executeIndexes[_executeIndexes.length - 1] !== _callStack.length - 1) {
+			// checks that the last execute() task is also the most recent task in the call stack
 			throw Error("else() must be called immediately after execute() if used.");
 		}
 
-		addToCallStack(() => {
-			callback(this.node);
-			next();
+		_AddToCallStack(() => {
+			callback(_node);
+			_Next();
 		});
 
-		this.elseIndexes.push(this.callStack.length - 2);
+		//  the else() index is stored as its relative execute() task's index
+		_elseIndexes.push(_callStack.length - 2);
 
 		return this;
 	}
