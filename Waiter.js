@@ -85,7 +85,7 @@ Waiter.createChain = () => { return new (function() {
 		if (_callIndex === _callStack.length) {
 			// end of call stack reached
 			_ClearCallStack();
-			_completionCallback();
+			_completionCallback && _completionCallback();
 			return;
 		} else if (_callStack.length === 0) {
 			return;
@@ -164,6 +164,36 @@ Waiter.createChain = () => { return new (function() {
 				// if the node is found, stop looking and run the _Next function in the chain
 				if (node !== null) {
 					_node = node;
+					clearInterval(_interval);
+					_Next();
+					return;
+				}
+
+				// if the waiting times out, run the timeout handler
+				if (_timeouts[waitNumber] && performance.now() - waitStartTimestamp > _timeouts[waitNumber].milliseconds) {
+					clearInterval(_interval);
+					_timeouts[waitNumber].handler && _timeouts[waitNumber].handler();
+					return;
+				}
+			}, INTERVAL_MILLISECONDS);
+		});
+
+		return this;
+	}
+
+	this.waitUntil = (callback) => {
+		_waitCounter++;
+
+		// closure over this wait task's waitNumber for use with the _timeouts map
+		const waitNumber = _waitCounter;
+
+		_AddToCallStack(() => {
+			// create a timestamp used for determining if the wait operation has timed out
+			const waitStartTimestamp = performance.now();
+
+			_interval = setInterval(() => {
+				// if the callback returns true, stop looking and run the _Next function in the chain
+				if (callback()) {
 					clearInterval(_interval);
 					_Next();
 					return;
