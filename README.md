@@ -9,6 +9,8 @@ If your Chrome extension needs to manipulate DOM elements on external websites, 
 Example useage:
 
 ```javascript
+    const w = new Waiter();
+    
     w.waitFor("#test")
     // .timeoutIn(1000, () => console.log("waiting timed out"))
     .toExist()
