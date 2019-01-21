@@ -3,7 +3,9 @@
 		- ifTimeout()
 */
 
-const Waiter = function() {
+const Waiter = {};
+
+Waiter.createChain = () => { return new (function() {
 	/*
 	 * CONSTANTS
 	 */	
@@ -210,6 +212,8 @@ const Waiter = function() {
 			}
 
 			_node.click();
+
+			_Next();
 		});
 
 		return this;
@@ -292,4 +296,4 @@ const Waiter = function() {
 
 		return this;
 	}
-}
+})};

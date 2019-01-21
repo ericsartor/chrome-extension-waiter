@@ -5,21 +5,23 @@
 	<title>Waiter</title>
 </head>
 <body>
-	<pre id="content"></pre>
 	<script src="Waiter.js"></script>
 	<script>
-		const endpoint = "https://cat-fact.herokuapp.com/facts";
+		setTimeout(() => {
+			const div = document.createElement("div");
+			div.style.border = "2px solid black";
+			div.id = "test";
+			div.addEventListener("click", () => console.log("div click listener triggered"));
+			document.body.appendChild(div);
 
-		fetch(endpoint)
-		.then((response) => response.json())
-		.then((json) => {
-			document.querySelector("#content").textContent = JSON.stringify(json.all[0], undefined, 2);
-		});
+			setTimeout(() => {
+				div.textContent = "test";
+			}, 1000)
+		}, 1000);
 	</script>
 	<script>
-		const w = new Waiter();
-
-		w.waitFor("#test")
+		Waiter.createChain()
+		.waitFor("#test")
 		// .timeoutIn(1000, () => console.log("timeout"))
 		.toExist()
 		.execute(() => console.log("node exists"))
@@ -29,16 +31,9 @@
 		// .ifValueMatches(/dsa/gi)
 		.execute((node) => console.log("execute()"))
 		.else((node) => console.log("else()"))
-		.waitFor("button")
-		.click()
 		.wait(1000)
+		.click()
 		.end(() => console.log("You've been served."));
-
-		// const w2 = new Waiter();
-
-		// w2.waitFor("button")
-		// .click()
-		// .end();
 	</script>
 </body>
 </html>
