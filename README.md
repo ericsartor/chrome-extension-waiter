@@ -8,6 +8,7 @@ If your Chrome extension needs to manipulate DOM elements on external websites, 
 
 Example useage:
 
+```javascript
     w.waitFor("#test")
     // .timeoutIn(1000, () => console.log("waiting timed out"))
     .toExist()
@@ -18,3 +19,4 @@ Example useage:
     .execute((node) => console.log("handle the information"))
     .else((node) => console.log("do something else"))
     .end(() => console.log("Chain complete!"));
+```
