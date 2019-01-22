@@ -136,6 +136,13 @@ Waiter.createChain = () => { return new (function() {
 		_Next();
 	}
 
+	this.get = (node) => {
+		_AddToCallStack(() => {
+			_node = node;
+			_Next();
+		});
+	}
+
 	// arbitrary time delay
 	this.wait = (milliseconds) => {
 		_AddToCallStack(() => {
@@ -145,9 +152,8 @@ Waiter.createChain = () => { return new (function() {
 		return this;
 	}
 
-	// starts looking for a node based on a query selector via interval, then proceeds once found (or timed out if one is registered)
+	// starts looking for a node based on a query selector via interval, then proceeds once found (or timed out if a timeout is registered)
 	this.waitFor = (selector, indexOrPredicate) => {
-		_selector = selector;
 		_waitCounter++;
 
 		// closure over this wait task's waitNumber for use with the _timeouts map
@@ -160,6 +166,8 @@ Waiter.createChain = () => { return new (function() {
 		}
 
 		_AddToCallStack(() => {
+			_selector = selector;
+
 			// create a timestamp used for determining if the wait operation has timed out
 			const waitStartTimestamp = performance.now();
 
@@ -179,6 +187,49 @@ Waiter.createChain = () => { return new (function() {
 				})()
 
 				// if the node is found, stop looking and run the _Next function in the chain
+				if (node !== null) {
+					_node = node;
+					clearInterval(_interval);
+					_Next();
+					return;
+				}
+
+				// if the waiting times out, run the timeout handler
+				if (_timeouts[waitNumber] && performance.now() - waitStartTimestamp > _timeouts[waitNumber].milliseconds) {
+					clearInterval(_interval);
+					_timeouts[waitNumber].handler && _timeouts[waitNumber].handler();
+					return;
+				}
+			}, INTERVAL_MILLISECONDS);
+		});
+
+		return this;
+	}
+
+	// starts looking for a collection of nodes based on a query selector via interval, then proceeds once found (or timed out if a timeout is registered)
+	this.waitForAll = (selector) => {
+		_waitCounter++;
+
+		// closure over this wait task's waitNumber for use with the _timeouts map
+		const waitNumber = _waitCounter;
+
+		const secondArgType = typeof indexOrPredicate;
+
+		if (!["function", "number"].includes(secondArgType)) {
+			throw new Error("Second argument of waitFor() must be either a number or function.");
+		}
+
+		_AddToCallStack(() => {
+			_selector = selector;
+
+			// create a timestamp used for determining if the wait operation has timed out
+			const waitStartTimestamp = performance.now();
+
+			_interval = setInterval(() => {
+				// attempt to find the nodes based on the supplied query selector
+				const node = document.querySelectorAll(_selector).length ? [...document.querySelectorAll(_selector)] : null;
+
+				// if the nodes are found, stop looking and run the _Next function in the chain
 				if (node !== null) {
 					_node = node;
 					clearInterval(_interval);
