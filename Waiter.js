@@ -146,12 +146,18 @@ Waiter.createChain = () => { return new (function() {
 	}
 
 	// starts looking for a node based on a query selector via interval, then proceeds once found (or timed out if one is registered)
-	this.waitFor = (selector) => {
+	this.waitFor = (selector, indexOrPredicate) => {
 		_selector = selector;
 		_waitCounter++;
 
 		// closure over this wait task's waitNumber for use with the _timeouts map
 		const waitNumber = _waitCounter;
+
+		const secondArgType = typeof indexOrPredicate;
+
+		if (!["function", "number"].includes(secondArgType)) {
+			throw new Error("Second argument of waitFor() must be either a number or function.");
+		}
 
 		_AddToCallStack(() => {
 			// create a timestamp used for determining if the wait operation has timed out
@@ -159,7 +165,18 @@ Waiter.createChain = () => { return new (function() {
 
 			_interval = setInterval(() => {
 				// attempt to find the node based on the supplied query selector
-				const node  = document.querySelector(_selector);
+				const node = (() => {
+					if (indexOrPredicate) {
+						if (secondArgType === "function") {
+							// return the first node from the list that passes the predicate, or return null if none do
+							return Array.from(document.querySelectorAll(_selector)).find((node) => indexOrPredicate(node)) || null;
+						} else if (secondArgType === "number") {
+							return document.querySelectorAll(_selector).length ? document.querySelectorAll(_selector)[indexOrPredicate] : null;
+						}
+					} else {
+						return document.querySelector(_selector);
+					}
+				})()
 
 				// if the node is found, stop looking and run the _Next function in the chain
 				if (node !== null) {

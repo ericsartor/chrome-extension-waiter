@@ -8,24 +8,29 @@
 	<script src="Waiter.js"></script>
 	<script>
 		setTimeout(() => {
-			const div = document.createElement("div");
-			div.style.border = "2px solid black";
-			div.id = "test";
-			div.addEventListener("click", () => console.log("div click listener triggered"));
-			document.body.appendChild(div);
+			[...Array(5).keys()].forEach((n) => {
+				const div = document.createElement("div");
+				div.style.border = "2px solid black";
+				div.id = "test" + n;
+				div.addEventListener("click", () => console.log("div " + n + " click listener triggered"));
+				document.body.appendChild(div);
+			});			
 
 			setTimeout(() => {
-				div.textContent = "test";
+				document.querySelector("#test2").textContent = "test";
 			}, 1000)
 		}, 1000);
 	</script>
 	<script>
 		Waiter.createChain()
-		.waitFor("#test")
+		.waitFor("div", (node) => {
+			return node.id.includes("2");
+		})
 		// .timeoutIn(1000, () => console.log("timeout"))
 		.toExist()
 		.execute(() => console.log("node exists"))
 		.toPopulate()
+		.timeoutIn(2000, () => console.log("population timed out"))
 		.execute(() => console.log("node has been populated"))
 		.ifValueMatches(/test/gi)
 		// .ifValueMatches(/dsa/gi)
